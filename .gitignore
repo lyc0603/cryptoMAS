@@ -172,6 +172,5 @@ cython_debug/
 
 data/
 processed_data/
-project/
 
 .DS_Store
