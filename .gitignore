@@ -170,8 +170,8 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-environ/constants.py
 data/
 processed_data/
+project/
 
 .DS_Store
