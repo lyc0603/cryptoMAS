@@ -1,10 +1,10 @@
-# [Project Name]
+# cryptoMAS
 
 ## Setup
 
 ```
-git clone [HTTPS/SSH URL]
-cd [project-name]
+git clone https://github.com/lyc0603/cryptoMAS.git
+cd cryptoMAS
 ```
 
 ### Give execute permission to your script and then run `setup_repo.sh`

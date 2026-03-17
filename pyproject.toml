@@ -18,10 +18,20 @@ classifiers = [
 dependencies = [
     "numpy",
     "pandas",
-    'scipy',
+    "scipy",
     "requests",
     "matplotlib",
     "seaborn",
+    "openai",
+    "beautifulsoup4",
+    "lxml",
+    "python-dateutil",
+    "tqdm",
+    "python-dotenv",
+    "tiktoken",
+    "torch",
+    "scikit-learn",
+    "neuralforecast",
 ]
 
 [project.optional-dependencies]

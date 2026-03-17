@@ -172,5 +172,8 @@ cython_debug/
 
 data/
 processed_data/
+.claude/
+logs/
+lightning_logs/
 
 .DS_Store
