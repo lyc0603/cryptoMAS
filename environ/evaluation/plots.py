@@ -481,10 +481,10 @@ def plot_risk_return(
         ax.annotate(
             _display_name(combo_name),
             xy=(vol, cum), xytext=(xoff, 3), textcoords="offset points",
-            fontsize=9, color=color, fontweight="bold", ha=ha,
+            fontsize=11, color=color, fontweight="bold", ha=ha,
         )
 
-    # ── Two side-by-side legends ──
+    # ── Stacked legends: Capability on top, Group below ──
     import matplotlib.lines as mlines
     import matplotlib.patches as mpatches
     cap_handles = [
@@ -496,24 +496,24 @@ def plot_risk_return(
         mpatches.Patch(color=_BM_DL_COLOR,                   label="Deep Learning"),
     ]
     grp_handles = [
-        mlines.Line2D([], [], color="#555", marker="o", ls="none", ms=8, label="MAS"),
-        mlines.Line2D([], [], color="#555", marker="D", ls="none", ms=8, label="Single Agent"),
-        mlines.Line2D([], [], color="#555", marker="s", ls="none", ms=8, label="Hold"),
-        mlines.Line2D([], [], color="#555", marker="^", ls="none", ms=8, label="Deep Learning"),
+        mlines.Line2D([], [], color="#555", marker="o", ls="none", ms=9, label="MAS"),
+        mlines.Line2D([], [], color="#555", marker="D", ls="none", ms=9, label="Single Agent"),
+        mlines.Line2D([], [], color="#555", marker="s", ls="none", ms=9, label="Hold"),
+        mlines.Line2D([], [], color="#555", marker="^", ls="none", ms=9, label="Deep Learning"),
     ]
-    leg1 = ax.legend(handles=cap_handles, title="Capability", fontsize=9,
-                     title_fontsize=10, frameon=False,
+    leg1 = ax.legend(handles=cap_handles, title="Capability", fontsize=11,
+                     title_fontsize=12, frameon=False,
                      loc="upper left", bbox_to_anchor=(0.01, 0.99))
     ax.add_artist(leg1)
-    ax.legend(handles=grp_handles, title="Group", fontsize=9,
-              title_fontsize=10, frameon=False,
-              loc="upper left", bbox_to_anchor=(0.27, 0.99))
+    ax.legend(handles=grp_handles, title="Group", fontsize=11,
+              title_fontsize=12, frameon=False,
+              loc="upper left", bbox_to_anchor=(0.01, 0.65))
 
-    ax.set_xlabel("Annualised Volatility (%)", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Cumulative Return (%)", fontsize=12, fontweight="bold")
+    ax.set_xlabel("Annualised Volatility (%)", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Cumulative Return (%)", fontsize=13, fontweight="bold")
     ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:+.0f}%"))
-    ax.tick_params(labelsize=11)
+    ax.tick_params(labelsize=12)
     for lbl in ax.get_xticklabels() + ax.get_yticklabels():
         lbl.set_fontweight("bold")
     ax.grid(axis="both", linestyle="--", alpha=0.3, zorder=1)
