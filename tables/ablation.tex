@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering
+\caption{Agent component ablation study. Each variant removes one component from the Hierarchical (ZS) reference system ($\dagger$). Deltas $(\Delta)$ relative to the reference are annotated with \inc{} (increase) and \dec{} (decrease).}
+\label{tab:ablation}
+\footnotesize
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{l | rrrr}
+\toprule
+\multirow{2}{*}{\textbf{Strategy}} & \multicolumn{4}{c}{\textbf{Full Period} ($N=52$)} \\
+\cmidrule(l){2-5}
+& Cum\%\textcolor{red}{$\uparrow$} & Vol\%\textcolor{teal}{$\downarrow$} & SR\textcolor{red}{$\uparrow$} & Win\%\textcolor{red}{$\uparrow$} \\
+\midrule
+Hier.\ (ZS)$\dagger$ & $+52.19$ & $56.24$ & $+1.022$ & $61.5$ \\
+\midrule
+$-$ News Agent & $+51.31${\scriptsize \dec{0.88\%}} & $63.00${\scriptsize \inc{6.76\%}} & $+0.968${\scriptsize \dec{0.05}} & $57.7${\scriptsize \dec{3.80\%}} \\
+$-$ Crypto Agent & $+9.62${\scriptsize \dec{42.57\%}} & $45.33${\scriptsize \dec{10.91\%}} & $+0.424${\scriptsize \dec{0.60}} & $50.0${\scriptsize \dec{11.50\%}} \\
+$-$ Memory & $+40.72${\scriptsize \dec{11.47\%}} & $59.61${\scriptsize \inc{3.37\%}} & $+0.857${\scriptsize \dec{0.17}} & $55.8${\scriptsize \dec{5.70\%}} \\
+\bottomrule
+\end{tabular}
+\end{table}

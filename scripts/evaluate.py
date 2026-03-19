@@ -32,14 +32,12 @@ from environ.evaluation import (
     summary_table,
     plot_portfolio,
     plot_risk_return,
-    plot_regime_bars,
 )
 from environ.evaluation.metrics import load_combination, load_all, INITIAL_CASH
 
 PLOTS = {
-    "portfolio":    plot_portfolio,
-    "risk_return":  plot_risk_return,
-    "regime_bars":  plot_regime_bars,
+    "portfolio":   plot_portfolio,
+    "risk_return": plot_risk_return,
 }
 
 FIGURES_DIR = Path("figures")
@@ -48,7 +46,6 @@ TABLES_DIR  = Path("tables")
 FILENAMES = {
     "portfolio":   "portfolio.pdf",
     "risk_return": "risk_return.pdf",
-    "regime_bars": "regime_bars.pdf",
 }
 
 REGIMES = ["all", "bull", "bear"]
@@ -92,8 +89,7 @@ def _metrics_subset(wr: pd.Series, tv: pd.Series) -> dict:
     avg_weekly   = float(wr.mean())
     std_weekly   = float(wr.std()) if n > 1 else np.nan
     ann_vol      = float(wr.std() * np.sqrt(WEEKS_PER_YEAR)) if n > 1 else np.nan
-    ann_ret      = float((1 + cum_ret) ** (WEEKS_PER_YEAR / n) - 1)
-    sharpe       = ann_ret / ann_vol if (ann_vol and ann_vol > 0) else np.nan
+    sharpe       = float(avg_weekly / wr.std() * np.sqrt(WEEKS_PER_YEAR)) if (n > 1 and wr.std() > 0) else np.nan
 
     run_max  = tv.cummax()
     max_dd   = float(((tv - run_max) / run_max).min())
@@ -403,6 +399,125 @@ def latex_table(
     return "\n".join(lines)
 
 
+# ── Ablation LaTeX table ──────────────────────────────────────────────────────
+
+# Reference + ablation variant definitions (combo_name, display_name, footnote)
+_ABLATION_ROWS: list[tuple[str, str, str]] = [
+    ("hierarchical_zero_shot",         r"Hier.\ (ZS)",      r"$\dagger$"),
+    ("ablation_no_news_zero_shot",     r"$-$ News Agent",   ""),
+    ("ablation_no_crypto_zero_shot",   r"$-$ Crypto Agent", ""),
+    ("ablation_no_memory_zero_shot",   r"$-$ Memory",       ""),
+]
+
+# direction: "up" = higher is better, "down" = lower is better
+# pct_unit: True = append \% to delta (Cum%, Vol%, Win%), False = bare number (SR)
+_ABLATION_METRICS: list[tuple[str, str, str, str, bool]] = [
+    ("cum_ret_pct",  r"Cum\%", "{:+.2f}", "up",   True),
+    ("ann_vol_pct",  r"Vol\%", "{:.2f}",  "down", True),
+    ("sharpe",       "SR",     "{:+.3f}", "up",   False),
+    ("win_rate_pct", r"Win\%", "{:.1f}",  "up",   True),
+]
+
+
+def latex_ablation_table(
+    regime_data: dict[str, list[dict]],
+    *,
+    regime_counts: dict[str, int] | None = None,
+    caption: str = (
+        r"Agent component ablation study. Each variant removes one component from "
+        r"the Hierarchical (ZS) reference system ($\dagger$). "
+        r"Deltas $(\Delta)$ relative to the reference are annotated with "
+        r"\inc{} (increase) and \dec{} (decrease)."
+    ),
+    label: str = "tab:ablation",
+) -> str:
+    """
+    Build a LaTeX table for the ablation study (Experiment A).
+
+    Rows    : Hierarchical (ZS) reference + 3 ablation variants.
+    Columns : 6 metrics × 3 regimes (All / Bull / Bear).
+    Delta   : Δ from reference shown in coloured parentheses below each value.
+    """
+    by_regime: dict[str, dict[str, dict]] = {
+        reg: {r["combination"]: r for r in rows}
+        for reg, rows in regime_data.items()
+    }
+
+    # Reference values for delta computation
+    ref_combo = _ABLATION_ROWS[0][0]
+
+    n_metrics = len(_ABLATION_METRICS)
+
+    metric_spec = "r" * n_metrics
+    col_spec    = f"l | {metric_spec}"
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    n_all = regime_counts.get("All", "") if regime_counts else ""
+    all_label = f"\\textbf{{Full Period}} ($N={n_all}$)" if n_all else r"\textbf{Full Period}"
+    header1 = (r"\multirow{2}{*}{\textbf{Strategy}} & \multicolumn{" + str(n_metrics) +
+               r"}{c}{" + all_label + r"} \\")
+
+    _ARROW  = {"up": r"\textcolor{red}{$\uparrow$}", "down": r"\textcolor{teal}{$\downarrow$}"}
+    header2 = "& " + " & ".join(f"{m[1]}{_ARROW[m[3]]}" for m in _ABLATION_METRICS) + r" \\"
+    cmidrule_line = f"\\cmidrule(l){{2-{1 + n_metrics}}}"
+
+    # ── Data rows (full period only) ───────────────────────────────────────────
+    data_lines: list[str] = []
+    for row_idx, (combo, display, footnote) in enumerate(_ABLATION_ROWS):
+        is_ref = (row_idx == 0)
+        if row_idx == 1:
+            data_lines.append(r"\midrule")
+
+        cells    = [display + footnote]
+        reg_dict = by_regime.get("all", {})
+        row      = reg_dict.get(combo, {})
+        ref_row  = reg_dict.get(ref_combo, {})
+
+        for key, _, fmt, direction, pct_unit in _ABLATION_METRICS:
+            val     = row.get(key)
+            ref_val = ref_row.get(key)
+
+            if val is None or (isinstance(val, float) and np.isnan(val)):
+                main_str = "---"
+            else:
+                main_str = fmt.format(float(val))
+
+            if is_ref or val is None or ref_val is None:
+                cells.append(f"${main_str}$")
+            else:
+                delta        = float(val) - float(ref_val)
+                macro        = r"\inc" if delta > 0 else r"\dec"
+                abs_delta    = abs(delta)
+                delta_fmt    = f"{abs_delta:.2f}" if "." in fmt else f"{abs_delta:.1f}"
+                unit         = r"\%" if pct_unit else ""
+                cells.append(
+                    f"${main_str}${{\\scriptsize {macro}{{{delta_fmt}{unit}}}}}"
+                )
+
+        data_lines.append(" & ".join(cells) + r" \\")
+
+    lines = [
+        r"\begin{table}[t]",
+        r"\centering",
+        r"\caption{" + caption + "}",
+        r"\label{" + label + "}",
+        r"\footnotesize",
+        r"\setlength{\tabcolsep}{6pt}",
+        r"\renewcommand{\arraystretch}{1.15}",
+        r"\begin{tabular}{" + col_spec + "}",
+        r"\toprule",
+        header1,
+        cmidrule_line,
+        header2,
+        r"\midrule",
+    ] + data_lines + [
+        r"\bottomrule",
+        r"\end{tabular}",
+        r"\end{table}",
+    ]
+    return "\n".join(lines)
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -422,6 +537,10 @@ def main():
                         help="Output a LaTeX tabular table of regime-conditioned metrics")
     parser.add_argument("--latex-out", default=None, metavar="FILE",
                         help="Save the LaTeX table to this file (default: tables/regime_performance.tex)")
+    parser.add_argument("--ablation-latex", action="store_true",
+                        help="Generate ablation study LaTeX table (Experiment A)")
+    parser.add_argument("--ablation-latex-out", default=None, metavar="FILE",
+                        help="Save ablation LaTeX table to this file (default: tables/ablation.tex)")
     args = parser.parse_args()
 
     data_dir   = Path(args.data_dir)
@@ -492,6 +611,20 @@ def main():
         out_tex.parent.mkdir(parents=True, exist_ok=True)
         out_tex.write_text(tex, encoding="utf-8")
         print(f"LaTeX table saved → {out_tex}")
+
+    # ── Ablation LaTeX table ──────────────────────────────────────────────────
+    if args.ablation_latex:
+        if regimes is None:
+            print("Warning: benchmark_mcap_hold not found — cannot build ablation table.")
+        else:
+            abl_tex = latex_ablation_table(regime_data, regime_counts=regime_counts)
+            if args.ablation_latex_out:
+                abl_out = Path(args.ablation_latex_out)
+            else:
+                abl_out = TABLES_DIR / "ablation.tex"
+            abl_out.parent.mkdir(parents=True, exist_ok=True)
+            abl_out.write_text(abl_tex, encoding="utf-8")
+            print(f"Ablation table saved → {abl_out}")
 
     # ── Plots (always full period) ────────────────────────────────────────────
     output_dir.mkdir(parents=True, exist_ok=True)
