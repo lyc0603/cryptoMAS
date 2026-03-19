@@ -31,27 +31,24 @@ import pandas as pd
 from environ.evaluation import (
     summary_table,
     plot_portfolio,
-    plot_drawdown,
-    plot_weekly_returns,
-    plot_metrics_heatmap,
+    plot_risk_return,
+    plot_regime_bars,
 )
 from environ.evaluation.metrics import load_combination, load_all, INITIAL_CASH
 
 PLOTS = {
-    "portfolio": plot_portfolio,
-    "drawdown":  plot_drawdown,
-    "returns":   plot_weekly_returns,
-    "heatmap":   plot_metrics_heatmap,
+    "portfolio":    plot_portfolio,
+    "risk_return":  plot_risk_return,
+    "regime_bars":  plot_regime_bars,
 }
 
 FIGURES_DIR = Path("figures")
 TABLES_DIR  = Path("tables")
 
 FILENAMES = {
-    "portfolio": "portfolio.pdf",
-    "drawdown":  "drawdown_timeseries.pdf",
-    "returns":   "weekly_returns.pdf",
-    "heatmap":   "metrics_heatmap.pdf",
+    "portfolio":   "portfolio.pdf",
+    "risk_return": "risk_return.pdf",
+    "regime_bars": "regime_bars.pdf",
 }
 
 REGIMES = ["all", "bull", "bear"]

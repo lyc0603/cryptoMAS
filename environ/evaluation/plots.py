@@ -375,149 +375,226 @@ def plot_portfolio(
     return _save_or_show(fig, save_path, show)
 
 
-# ── 2. Drawdown timeseries ────────────────────────────────────────────────────
 
-def plot_drawdown(
+# ── Helper: display labels ────────────────────────────────────────────────────
+
+_ARCH_SHORT = {
+    "hierarchical":  "Hier.",
+    "collaborative": "Collab.",
+    "debate":        "Debate",
+    "single_agent":  "SA",
+    "benchmark":     "",
+}
+_CAP_SHORT = {
+    "zero_shot":        "ZS",
+    "chain_of_thought": "CoT",
+    "rag":              "RAG",
+    "skill":            "Skill",
+    "btc_hold":         "BTC Hold",
+    "mcap_hold":        "MCap Hold",
+    "lstm":             "LSTM",
+    "informer":         "Informer",
+    "autoformer":       "Autoformer",
+    "timesnet":         "TimesNet",
+    "patchtst":         "PatchTST",
+}
+
+def _display_name(combo_name: str) -> str:
+    arch, cap = _arch_cap(combo_name)
+    a = _ARCH_SHORT.get(arch, arch.title())
+    c = _CAP_SHORT.get(cap, cap.replace("_", " ").title())
+    return c if arch == "benchmark" else f"{a} ({c})"
+
+
+def _strategy_style(combo_name: str) -> tuple[str, str, str]:
+    """Return (color, marker, edgecolor) for scatter/bar plots."""
+    arch, cap = _arch_cap(combo_name)
+    grp = _group(arch, cap)
+    if grp == "hold":
+        color = _BM_HOLD_COLOR
+    elif grp == "dl":
+        color = _BM_DL_COLOR
+    else:
+        color = _CAP_COLOR.get(cap, "#333333")
+    marker = _MARKER_GROUP.get(grp, "o")
+    return color, marker, "white"
+
+
+def _load_basket(output_dir: Path):
+    """Load mcap_hold basket for regime classification; returns (weeks, regimes) or ([], [])."""
+    combos = load_all(output_dir)
+    basket_key = next((k for k in combos if "mcap_hold" in k), None)
+    if basket_key is None:
+        return [], []
+    df = combos[basket_key]
+    weeks   = list(df.index)
+    regimes = _classify_regimes(df["total_value"].tolist())
+    return weeks, regimes
+
+
+# ── 2. Risk-return scatter ────────────────────────────────────────────────────
+
+def plot_risk_return(
     output_dir: Path,
-    save_path: str | Path = "figures/drawdown_timeseries.pdf",
+    save_path: str | Path = "figures/risk_return.pdf",
     show: bool = False,
 ) -> Path | None:
     """
-    Drawdown (%) from peak for every combination over time.
-    Shaded area shows the magnitude of the underwater period.
+    Scatter of annualised volatility (x) vs cumulative return (y).
+    Color = capability; marker = group (Hold / DL / SA / MAS).
     """
     combos = load_all(Path(output_dir))
     if not combos:
         return None
 
-    fig, ax = plt.subplots(figsize=(14, 6))
+    fig, ax = plt.subplots(figsize=(8, 6))
 
+    # plot order: benchmarks first (so MAS dots sit on top)
+    ordered = sorted(combos.items(),
+                     key=lambda kv: 0 if _group(*_arch_cap(kv[0])) in ("hold", "dl") else 1)
+
+    points = {}
+    for combo_name, df in ordered:
+        arch, cap = _arch_cap(combo_name)
+        grp = _group(arch, cap)
+        color, marker, ec = _strategy_style(combo_name)
+        wr  = df["weekly_return"]
+        vol = wr.std() * np.sqrt(52) * 100
+        tv  = df["total_value"]
+        cum = (tv.iloc[-1] - INITIAL_CASH) / INITIAL_CASH * 100
+        points[combo_name] = (vol, cum)
+
+        ms  = 90 if grp == "mas" else 60
+        ax.scatter(vol, cum, color=color, marker=marker, s=ms,
+                   edgecolors=ec, linewidths=0.6, zorder=3, alpha=0.88)
+
+    ax.axhline(0, color="black", linewidth=0.8, linestyle="--", alpha=0.5, zorder=2)
+
+    # Annotate after scatter so we know the full x range; flip label left near right edge
+    all_vols  = [v for v, _ in points.values()]
+    vol_max   = max(all_vols)
+    vol_range = vol_max - min(all_vols)
+    for combo_name, (vol, cum) in points.items():
+        color  = _strategy_style(combo_name)[0]
+        near_right = vol > vol_max - 0.15 * vol_range
+        xoff, ha   = (-6, "right") if near_right else (4, "left")
+        ax.annotate(
+            _display_name(combo_name),
+            xy=(vol, cum), xytext=(xoff, 3), textcoords="offset points",
+            fontsize=7.5, color=color, fontweight="bold", ha=ha,
+        )
+
+    # ── Legend: capability (color) ──
+    import matplotlib.lines as mlines
+    import matplotlib.patches as mpatches
+    cap_handles = [
+        mpatches.Patch(color=_CAP_COLOR["zero_shot"],        label="Zero-shot (ZS)"),
+        mpatches.Patch(color=_CAP_COLOR["chain_of_thought"], label="Chain-of-thought (CoT)"),
+        mpatches.Patch(color=_CAP_COLOR["rag"],              label="RAG"),
+        mpatches.Patch(color=_CAP_COLOR["skill"],            label="Skill"),
+        mpatches.Patch(color=_BM_HOLD_COLOR,                 label="Hold"),
+        mpatches.Patch(color=_BM_DL_COLOR,                   label="Deep Learning"),
+    ]
+    grp_handles = [
+        mlines.Line2D([], [], color="#555", marker="o", ls="none", ms=7, label="MAS"),
+        mlines.Line2D([], [], color="#555", marker="D", ls="none", ms=7, label="Single Agent"),
+        mlines.Line2D([], [], color="#555", marker="s", ls="none", ms=7, label="Hold"),
+        mlines.Line2D([], [], color="#555", marker="^", ls="none", ms=7, label="Deep Learning"),
+    ]
+    leg1 = ax.legend(handles=cap_handles, title="Capability", fontsize=8,
+                     title_fontsize=8.5, frameon=False,
+                     loc="upper left", bbox_to_anchor=(0.01, 0.99))
+    ax.add_artist(leg1)
+    ax.legend(handles=grp_handles, title="Group", fontsize=8,
+              title_fontsize=8.5, frameon=False,
+              loc="upper left", bbox_to_anchor=(0.01, 0.68))
+
+    ax.set_xlabel("Annualised Volatility (%)", fontsize=11, fontweight="bold")
+    ax.set_ylabel("Cumulative Return (%)", fontsize=11, fontweight="bold")
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:+.0f}%"))
+    ax.tick_params(labelsize=9)
+    for lbl in ax.get_xticklabels() + ax.get_yticklabels():
+        lbl.set_fontweight("bold")
+    ax.grid(axis="both", linestyle="--", alpha=0.3, zorder=1)
+    fig.tight_layout()
+    return _save_or_show(fig, save_path, show)
+
+
+# ── 3. Regime-faceted bar chart ───────────────────────────────────────────────
+
+def plot_regime_bars(
+    output_dir: Path,
+    save_path: str | Path = "figures/regime_bars.pdf",
+    show: bool = False,
+) -> Path | None:
+    """
+    Three-panel horizontal bar chart (All / Bull / Bear).
+    Each panel shows cumulative return per strategy, sorted ascending.
+    """
+    combos = load_all(Path(output_dir))
+    if not combos:
+        return None
+
+    basket_weeks, basket_regimes = _load_basket(Path(output_dir))
+    week_to_regime = dict(zip(basket_weeks, basket_regimes))
+
+    REGIME_PANELS = [
+        ("all",  "All",  None),
+        ("bull", "Bull", "bull"),
+        ("bear", "Bear", "bear"),
+    ]
+
+    # Pre-compute cumulative return per strategy per regime
+    rows = {}
     for combo_name, df in combos.items():
-        arch, cap = _arch_cap(combo_name)
-        color  = ARCH_COLORS.get(arch, "#333333")
-        ls     = CAP_STYLES.get(cap, "-")
-        label  = f"{arch} / {cap.replace('_', ' ')}"
-        x      = [_week_to_date(w) for w in df.index]
-        tv     = df["total_value"]
-        dd     = (tv - tv.cummax()) / tv.cummax() * 100
+        rows[combo_name] = {}
+        for regime_key, _, regime_filter in REGIME_PANELS:
+            if regime_filter is None:
+                wr = df["weekly_return"].dropna()
+            else:
+                mask = [week_to_regime.get(w) == regime_filter for w in df.index]
+                wr = df["weekly_return"].iloc[[i for i, m in enumerate(mask) if m]].dropna()
+            cum = (np.prod(1 + wr.values) - 1) * 100 if len(wr) else np.nan
+            rows[combo_name][regime_key] = cum
 
-        ax.plot(x, dd.values, color=color, linestyle=ls, linewidth=1.5, label=label)
-        ax.fill_between(x, dd.values, 0, color=color, alpha=0.06)
+    fig, axes = plt.subplots(1, 3, figsize=(16, 7), sharey=False)
 
-    ax.axhline(0, color="grey", linewidth=0.8, linestyle="--")
-    ax.set_title("Drawdown — All MAS Combinations", fontsize=14, pad=12)
-    ax.set_xlabel("Week")
-    ax.set_ylabel("Drawdown (%)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
-    ax.legend(loc="lower left", fontsize=9, framealpha=0.8)
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-    ax.grid(axis="x", linestyle=":", alpha=0.3)
-    fig.autofmt_xdate(rotation=30)
-    fig.tight_layout()
-    return _save_or_show(fig, save_path, show)
+    for ax, (regime_key, regime_title, _) in zip(axes, REGIME_PANELS):
+        # Sort ascending by cumulative return
+        sorted_combos = sorted(
+            [(name, rows[name][regime_key]) for name in rows
+             if not np.isnan(rows[name].get(regime_key, np.nan))],
+            key=lambda x: x[1],
+        )
+        names  = [_display_name(n) for n, _ in sorted_combos]
+        values = [v for _, v in sorted_combos]
+        colors = [_strategy_style(n)[0] for n, _ in sorted_combos]
 
+        bars = ax.barh(names, values, color=colors, edgecolor="white",
+                       linewidth=0.5, height=0.72, alpha=0.88)
 
-# ── 3. Weekly returns distribution ───────────────────────────────────────────
+        # Value labels
+        for bar, val in zip(bars, values):
+            sign = "+" if val >= 0 else ""
+            ax.text(
+                val + (1.5 if val >= 0 else -1.5),
+                bar.get_y() + bar.get_height() / 2,
+                f"{sign}{val:.1f}%",
+                va="center", ha="left" if val >= 0 else "right",
+                fontsize=7.5, fontweight="bold",
+            )
 
-def plot_weekly_returns(
-    output_dir: Path,
-    save_path: str | Path = "figures/weekly_returns.pdf",
-    show: bool = False,
-) -> Path | None:
-    """
-    Box plot of weekly returns (%) for each combination, sorted by median return.
-    """
-    combos = load_all(Path(output_dir))
-    if not combos:
-        return None
+        ax.axvline(0, color="black", linewidth=0.8, linestyle="--", alpha=0.6)
+        ax.set_title(regime_title, fontsize=13, fontweight="bold", pad=8)
+        ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:+.0f}%"))
+        ax.tick_params(axis="x", labelsize=8)
+        ax.tick_params(axis="y", labelsize=8.5)
+        for lbl in ax.get_xticklabels() + ax.get_yticklabels():
+            lbl.set_fontweight("bold")
+        ax.grid(axis="x", linestyle="--", alpha=0.35, zorder=0)
+        for spine in ["top", "right"]:
+            ax.spines[spine].set_visible(False)
 
-    labels, data, colors = [], [], []
-    for combo_name, df in sorted(combos.items(),
-                                  key=lambda kv: kv[1]["weekly_return"].median()):
-        arch, cap = _arch_cap(combo_name)
-        labels.append(f"{arch}\n{cap.replace('_', ' ')}")
-        data.append(df["weekly_return"].dropna() * 100)
-        colors.append(ARCH_COLORS.get(arch, "#333333"))
-
-    fig, ax = plt.subplots(figsize=(max(8, len(combos) * 2), 6))
-    bp = ax.boxplot(data, patch_artist=True, notch=False, vert=True,
-                    medianprops={"color": "black", "linewidth": 2})
-    for patch, color in zip(bp["boxes"], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.6)
-
-    ax.axhline(0, color="grey", linewidth=0.8, linestyle="--")
-    ax.set_xticks(range(1, len(labels) + 1))
-    ax.set_xticklabels(labels, fontsize=9)
-    ax.set_title("Weekly Return Distribution — All MAS Combinations", fontsize=14, pad=12)
-    ax.set_ylabel("Weekly Return (%)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.1f}%"))
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-    fig.tight_layout()
-    return _save_or_show(fig, save_path, show)
-
-
-# ── 4. Metrics heatmap ────────────────────────────────────────────────────────
-
-def plot_metrics_heatmap(
-    output_dir: Path,
-    save_path: str | Path = "figures/metrics_heatmap.pdf",
-    show: bool = False,
-) -> Path | None:
-    """
-    Heatmap comparing key metrics across all combinations (rows) normalised
-    column-wise so each metric is colour-scaled independently.
-    """
-    tbl = summary_table(Path(output_dir))
-    if tbl.empty:
-        return None
-
-    METRIC_COLS = [
-        "total_return_pct", "annualized_return_pct", "annualized_vol_pct",
-        "sharpe", "sortino", "max_drawdown_pct", "calmar", "win_rate_pct",
-    ]
-    METRIC_LABELS = [
-        "Total Return %", "Ann. Return %", "Ann. Vol %",
-        "Sharpe", "Sortino", "Max Drawdown %", "Calmar", "Win Rate %",
-    ]
-    # For drawdown a less-negative value is better → invert for colouring
-    INVERT = {"max_drawdown_pct"}
-
-    present = [c for c in METRIC_COLS if c in tbl.columns]
-    sub = tbl[present].copy().astype(float)
-
-    # Normalise each column to [0, 1] (higher = better)
-    normed = pd.DataFrame(index=sub.index)
-    for col in present:
-        col_min, col_max = sub[col].min(), sub[col].max()
-        rng = col_max - col_min
-        if rng == 0:
-            normed[col] = 0.5
-        else:
-            normed[col] = (sub[col] - col_min) / rng
-            if col in INVERT:
-                normed[col] = 1 - normed[col]
-
-    fig, ax = plt.subplots(figsize=(len(present) * 1.4 + 2, len(sub) * 0.55 + 2))
-    im = ax.imshow(normed.values, cmap="RdYlGn", aspect="auto", vmin=0, vmax=1)
-
-    ax.set_xticks(range(len(present)))
-    ax.set_xticklabels(
-        [METRIC_LABELS[METRIC_COLS.index(c)] for c in present],
-        rotation=30, ha="right", fontsize=9,
-    )
-    ax.set_yticks(range(len(sub)))
-    ax.set_yticklabels(sub.index.tolist(), fontsize=9)
-
-    # Annotate each cell with the raw value
-    for r, row_name in enumerate(sub.index):
-        for c, col in enumerate(present):
-            val = sub.loc[row_name, col]
-            txt = f"{val:.1f}" if val is not None and not np.isnan(val) else "—"
-            ax.text(c, r, txt, ha="center", va="center", fontsize=8,
-                    color="black" if 0.25 < normed.loc[row_name, col] < 0.85 else "white")
-
-    ax.set_title("Performance Metrics — All MAS Combinations", fontsize=13, pad=12)
-    fig.colorbar(im, ax=ax, fraction=0.02, pad=0.02, label="Relative rank (green = better)")
-    fig.tight_layout()
+    fig.tight_layout(w_pad=2.5)
     return _save_or_show(fig, save_path, show)

@@ -1,10 +1,5 @@
 from .metrics import load_combination, load_all, compute_metrics, summary_table
-from .plots import (
-    plot_portfolio,
-    plot_drawdown,
-    plot_weekly_returns,
-    plot_metrics_heatmap,
-)
+from .plots import plot_portfolio, plot_risk_return, plot_regime_bars
 
 __all__ = [
     # metrics
@@ -14,7 +9,6 @@ __all__ = [
     "summary_table",
     # plots
     "plot_portfolio",
-    "plot_drawdown",
-    "plot_weekly_returns",
-    "plot_metrics_heatmap",
+    "plot_risk_return",
+    "plot_regime_bars",
 ]
