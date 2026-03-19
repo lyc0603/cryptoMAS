@@ -464,7 +464,7 @@ def plot_risk_return(
         cum = (tv.iloc[-1] - INITIAL_CASH) / INITIAL_CASH * 100
         points[combo_name] = (vol, cum)
 
-        ms  = 90 if grp == "mas" else 60
+        ms  = 120 if grp == "mas" else 80
         ax.scatter(vol, cum, color=color, marker=marker, s=ms,
                    edgecolors=ec, linewidths=0.6, zorder=3, alpha=0.88)
 
@@ -477,14 +477,14 @@ def plot_risk_return(
     for combo_name, (vol, cum) in points.items():
         color  = _strategy_style(combo_name)[0]
         near_right = vol > vol_max - 0.15 * vol_range
-        xoff, ha   = (-6, "right") if near_right else (4, "left")
+        xoff, ha   = (-7, "right") if near_right else (5, "left")
         ax.annotate(
             _display_name(combo_name),
             xy=(vol, cum), xytext=(xoff, 3), textcoords="offset points",
-            fontsize=7.5, color=color, fontweight="bold", ha=ha,
+            fontsize=9, color=color, fontweight="bold", ha=ha,
         )
 
-    # ── Legend: capability (color) ──
+    # ── Two side-by-side legends ──
     import matplotlib.lines as mlines
     import matplotlib.patches as mpatches
     cap_handles = [
@@ -496,24 +496,24 @@ def plot_risk_return(
         mpatches.Patch(color=_BM_DL_COLOR,                   label="Deep Learning"),
     ]
     grp_handles = [
-        mlines.Line2D([], [], color="#555", marker="o", ls="none", ms=7, label="MAS"),
-        mlines.Line2D([], [], color="#555", marker="D", ls="none", ms=7, label="Single Agent"),
-        mlines.Line2D([], [], color="#555", marker="s", ls="none", ms=7, label="Hold"),
-        mlines.Line2D([], [], color="#555", marker="^", ls="none", ms=7, label="Deep Learning"),
+        mlines.Line2D([], [], color="#555", marker="o", ls="none", ms=8, label="MAS"),
+        mlines.Line2D([], [], color="#555", marker="D", ls="none", ms=8, label="Single Agent"),
+        mlines.Line2D([], [], color="#555", marker="s", ls="none", ms=8, label="Hold"),
+        mlines.Line2D([], [], color="#555", marker="^", ls="none", ms=8, label="Deep Learning"),
     ]
-    leg1 = ax.legend(handles=cap_handles, title="Capability", fontsize=8,
-                     title_fontsize=8.5, frameon=False,
+    leg1 = ax.legend(handles=cap_handles, title="Capability", fontsize=9,
+                     title_fontsize=10, frameon=False,
                      loc="upper left", bbox_to_anchor=(0.01, 0.99))
     ax.add_artist(leg1)
-    ax.legend(handles=grp_handles, title="Group", fontsize=8,
-              title_fontsize=8.5, frameon=False,
-              loc="upper left", bbox_to_anchor=(0.01, 0.68))
+    ax.legend(handles=grp_handles, title="Group", fontsize=9,
+              title_fontsize=10, frameon=False,
+              loc="upper left", bbox_to_anchor=(0.27, 0.99))
 
-    ax.set_xlabel("Annualised Volatility (%)", fontsize=11, fontweight="bold")
-    ax.set_ylabel("Cumulative Return (%)", fontsize=11, fontweight="bold")
+    ax.set_xlabel("Annualised Volatility (%)", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Cumulative Return (%)", fontsize=12, fontweight="bold")
     ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:+.0f}%"))
-    ax.tick_params(labelsize=9)
+    ax.tick_params(labelsize=11)
     for lbl in ax.get_xticklabels() + ax.get_yticklabels():
         lbl.set_fontweight("bold")
     ax.grid(axis="both", linestyle="--", alpha=0.3, zorder=1)
