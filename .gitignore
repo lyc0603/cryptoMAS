@@ -175,5 +175,6 @@ processed_data/
 .claude/
 logs/
 lightning_logs/
+LLM-Powered-Multi-Agent-System-for-Automated-Crypto-Portfolio-Management/
 
 .DS_Store

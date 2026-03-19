@@ -48,7 +48,7 @@ FIGURES_DIR = Path("figures")
 TABLES_DIR  = Path("tables")
 
 FILENAMES = {
-    "portfolio": "portfolio_timeseries.pdf",
+    "portfolio": "portfolio.pdf",
     "drawdown":  "drawdown_timeseries.pdf",
     "returns":   "weekly_returns.pdf",
     "heatmap":   "metrics_heatmap.pdf",

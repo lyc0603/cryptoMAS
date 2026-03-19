@@ -43,8 +43,96 @@ CAP_STYLES = {
     "bb":               (0, (1, 1)),         # dense dots
 }
 
+# ── portfolio() style constants ───────────────────────────────────────────────
+# Color encodes capability (SA + MAS); grey tones for benchmarks
+_CAP_COLOR = {
+    "zero_shot":        "#2196F3",   # blue
+    "chain_of_thought": "#4CAF50",   # green
+    "rag":              "#FF9800",   # orange
+    "skill":            "#9C27B0",   # purple
+}
+_BM_HOLD_COLOR = "#444444"
+_BM_DL_COLOR   = "#888888"
+
+# Linestyle encodes MAS architecture; SA gets dash-dot
+_ARCH_LS = {
+    "hierarchical":  "-",
+    "collaborative": "--",
+    "debate":        ":",
+}
+_SA_LS = "-."
+
+# Benchmark linestyles (so individual models are still distinguishable)
+_BM_LS = {
+    "btc_hold":  "-",
+    "mcap_hold": "--",
+    "lstm":      (0, (5, 1)),
+    "informer":  (0, (4, 1, 1, 1)),
+    "autoformer":(0, (4, 2)),
+    "timesnet":  (0, (3, 1, 1, 1, 1, 1)),
+    "patchtst":  (0, (6, 1, 2, 1)),
+}
+
+# Marker encodes group
+_MARKER_GROUP = {
+    "hold": "s",   # square
+    "dl":   "^",   # triangle-up
+    "sa":   "D",   # diamond
+    "mas":  "o",   # circle
+}
+
+_BM_HOLD_CAPS = {"btc_hold", "mcap_hold"}
+_BM_DL_CAPS   = {"lstm", "informer", "autoformer", "timesnet", "patchtst"}
+
+_REGIME_COLOR = {
+    "bull":     ("#c8e6c9", 0.55),   # light green
+    "bear":     ("#ffcdd2", 0.65),   # light red/pink
+    "sideways": ("#eeeeee", 0.50),   # light grey
+}
+
+
+def _group(arch: str, cap: str) -> str:
+    if arch == "benchmark":
+        return "hold" if cap in _BM_HOLD_CAPS else "dl"
+    if arch == "single_agent":
+        return "sa"
+    return "mas"
+
+
+def _classify_regimes(basket_vals: list[float]) -> list[str]:
+    """Cagan (2024) ±20 % bull / bear / sideways classification."""
+    if not basket_vals:
+        return []
+    peak = trough = basket_vals[0]
+    out = []
+    for v in basket_vals:
+        peak   = max(peak, v)
+        trough = min(trough, v)
+        if v >= trough * 1.20:
+            out.append("bull")
+        elif v <= peak * 0.80:
+            out.append("bear")
+        else:
+            out.append("sideways")
+    return out
+
+
+def _shade_regimes(ax, weeks: list[str], regimes: list[str]) -> None:
+    """Draw contiguous bull / bear / sideways background bands."""
+    dates = [_week_to_date(w) for w in weeks]
+    i = 0
+    while i < len(regimes):
+        j = i + 1
+        while j < len(regimes) and regimes[j] == regimes[i]:
+            j += 1
+        color, alpha = _REGIME_COLOR.get(regimes[i], ("#ffffff", 0))
+        x0 = dates[i]
+        x1 = dates[j - 1] + pd.Timedelta(days=7)
+        ax.axvspan(x0, x1, color=color, alpha=alpha, zorder=0, linewidth=0)
+        i = j
+
 def _arch_cap(combo_name: str) -> tuple[str, str]:
-    for arch in ("blackboard", "hierarchical", "collaborative", "debate"):
+    for arch in ("blackboard", "hierarchical", "collaborative", "debate", "single_agent"):
         if combo_name.startswith(arch):
             return arch, combo_name[len(arch) + 1:]
     parts = combo_name.split("_", 1)
@@ -74,50 +162,215 @@ def _save_or_show(fig, save_path, show: bool) -> Path | None:
 
 def plot_portfolio(
     output_dir: Path,
-    save_path: str | Path = "figures/portfolio_timeseries.pdf",
+    save_path: str | Path = "figures/portfolio.pdf",
     show: bool = False,
 ) -> Path | None:
     """
-    Line chart of portfolio total_value over time for every combination.
-    Each architecture gets a distinct colour; each capability a distinct linestyle.
-    Final P&L% is annotated at the end of each line.
+    Cumulative-return chart (indexed to 1.0) with bull/bear/sideways shading.
+
+    Mimics the style of the reference figure:
+      • Y-axis  : cumulative return ratio (1.0 = break-even)
+      • Background: green = bull, pink = bear, grey = sideways
+      • Dashed horizontal line at 1.0
+      • Clean lines (no markers); end-of-line % annotations
+
+    Visual encoding:
+      • Color      → capability  (ZS=blue, CoT=green, RAG=orange, Skill=purple)
+                     benchmarks  (Hold=dark-grey, DL=mid-grey)
+      • Linestyle  → MAS architecture  (— Hier., -- Collab., ··· Debate)
+                     Single Agent: -·-·   Benchmarks: model-specific
+      • Linewidth  → MAS=2.0, SA=1.4, benchmarks=1.2
+    Three legend boxes: Group/Architecture · Capability · Market Regime
     """
+    import matplotlib.lines as mlines
+    import matplotlib.patches as mpatches
+    import matplotlib.dates as mdates
+
     combos = load_all(Path(output_dir))
     if not combos:
         print(f"No results found in {output_dir}")
         return None
 
-    fig, ax = plt.subplots(figsize=(14, 7))
-    ax.axhline(INITIAL_CASH, color="grey", linewidth=1, linestyle=":",
-               label="Initial capital ($100k)", zorder=1)
+    # ── Regime shading from mcap-hold basket ─────────────────────────────────
+    basket_key = next((k for k in combos if "mcap_hold" in k), None)
+    if basket_key:
+        bdf          = combos[basket_key]
+        regime_weeks = list(bdf.index)
+        regimes      = _classify_regimes(bdf["total_value"].tolist())
+    else:
+        regime_weeks, regimes = [], []
+
+    # Determine exact x bounds from the data
+    all_dates = [_week_to_date(w) for df in combos.values() for w in df.index]
+    x_min, x_max = min(all_dates), max(all_dates)
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+
+    if regime_weeks:
+        _shade_regimes(ax, regime_weeks, regimes)
+
+    # Dashed break-even line
+    ax.axhline(1.0, color="black", linewidth=1.0, linestyle="--",
+               alpha=0.6, zorder=2)
+
+    global_min_tv = min(
+        (df["total_value"].values / INITIAL_CASH).min()
+        for df in combos.values()
+    )
 
     for combo_name, df in combos.items():
         arch, cap = _arch_cap(combo_name)
-        color  = ARCH_COLORS.get(arch, "#333333")
-        ls     = CAP_STYLES.get(cap, "-")
-        label  = f"{arch} / {cap.replace('_', ' ')}"
-        x      = [_week_to_date(w) for w in df.index]
+        grp       = _group(arch, cap)
+        x         = [_week_to_date(w) for w in df.index]
+        tv        = df["total_value"].values / INITIAL_CASH   # normalise to 1.0
 
-        ax.plot(x, df["total_value"].values,
-                color=color, linestyle=ls, linewidth=2,
-                marker="o", markersize=3, label=label, zorder=2)
+        if grp == "hold":
+            color, ls, lw, alpha = _BM_HOLD_COLOR, _BM_LS.get(cap, "-"),   1.2, 0.90
+        elif grp == "dl":
+            color, ls, lw, alpha = _BM_DL_COLOR,   _BM_LS.get(cap, "-"),   1.2, 0.75
+        elif grp == "sa":
+            color, ls, lw, alpha = _CAP_COLOR.get(cap, "#333"), _SA_LS,     1.4, 0.80
+        else:   # mas
+            color = _CAP_COLOR.get(cap, "#333")
+            ls    = _ARCH_LS.get(arch, "-")
+            lw, alpha = 2.0, 1.0
 
-        last_val = df["total_value"].iloc[-1]
-        pnl_pct  = (last_val - INITIAL_CASH) / INITIAL_CASH * 100
-        sign     = "+" if pnl_pct >= 0 else ""
-        ax.annotate(f"{sign}{pnl_pct:.1f}%",
-                    xy=(x[-1], last_val),
-                    xytext=(6, 0), textcoords="offset points",
-                    fontsize=7.5, va="center")
+        ax.plot(x, tv, color=color, linestyle=ls, linewidth=lw,
+                alpha=alpha, zorder=3)
 
-    ax.set_title("Portfolio Value — All MAS Combinations", fontsize=14, pad=12)
-    ax.set_xlabel("Week")
-    ax.set_ylabel("Portfolio Value (USD)")
-    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
-    ax.legend(loc="upper left", fontsize=9, framealpha=0.8)
-    ax.grid(axis="y", linestyle="--", alpha=0.4)
-    ax.grid(axis="x", linestyle=":", alpha=0.3)
-    fig.autofmt_xdate(rotation=30)
+        # End-of-line annotation
+        pct  = (tv[-1] - 1.0) * 100
+        sign = "+" if pct >= 0 else ""
+        ax.annotate(f"{sign}{pct:.0f}%",
+                    xy=(x[-1], tv[-1]),
+                    xytext=(4, 0), textcoords="offset points",
+                    fontsize=6, va="center", color=color,
+                    fontweight="bold", alpha=0.9)
+
+    # ── Zoom inset: Feb–Jun 2025, x-axis proportionally aligned to main ───────
+    zoom_start = pd.Timestamp("2025-02-01")
+    zoom_end   = pd.Timestamp("2025-07-01")   # inclusive of June
+
+    total_days = (x_max - x_min).days
+    x0_frac    = (zoom_start - x_min).days / total_days
+    width_frac = (zoom_end   - zoom_start).days / total_days
+
+    # [x0, y0, width, height] in axes fraction — lower position
+    axins = ax.inset_axes([x0_frac, 0.30, width_frac, 0.484])
+
+    # Same regime shading clipped to zoom window
+    if regime_weeks:
+        zw = [w for w in regime_weeks
+              if zoom_start <= _week_to_date(w) <= zoom_end]
+        zr = [r for w, r in zip(regime_weeks, regimes)
+              if zoom_start <= _week_to_date(w) <= zoom_end]
+        _shade_regimes(axins, zw, zr)
+
+    axins.axhline(1.0, color="black", linewidth=0.8, linestyle="--",
+                  alpha=0.5, zorder=2)
+
+    zoom_tvs = []
+    for combo_name, df in combos.items():
+        arch, cap = _arch_cap(combo_name)
+        grp       = _group(arch, cap)
+        x_all     = [_week_to_date(w) for w in df.index]
+        tv_all    = df["total_value"].values / INITIAL_CASH
+        x_z  = [xi for xi in x_all if zoom_start <= xi <= zoom_end]
+        tv_z = tv_all[[i for i, xi in enumerate(x_all) if zoom_start <= xi <= zoom_end]]
+        if not x_z:
+            continue
+        zoom_tvs.extend(tv_z)
+
+        if grp == "hold":
+            color, ls, lw, alpha = _BM_HOLD_COLOR, _BM_LS.get(cap, "-"),   1.2, 0.90
+        elif grp == "dl":
+            color, ls, lw, alpha = _BM_DL_COLOR,   _BM_LS.get(cap, "-"),   1.2, 0.75
+        elif grp == "sa":
+            color, ls, lw, alpha = _CAP_COLOR.get(cap, "#333"), _SA_LS,     1.4, 0.80
+        else:
+            color = _CAP_COLOR.get(cap, "#333")
+            ls    = _ARCH_LS.get(arch, "-")
+            lw, alpha = 2.0, 1.0
+        axins.plot(x_z, tv_z, color=color, linestyle=ls, linewidth=lw, alpha=alpha)
+
+    # x-axis aligned with main: xlim matches the Feb–Jun portion exactly
+    axins.set_xlim(zoom_start, zoom_end)
+    if zoom_tvs:
+        pad = 0.02
+        axins.set_ylim(min(zoom_tvs) - pad, max(zoom_tvs) + pad)
+    axins.xaxis.set_major_locator(mdates.MonthLocator())
+    axins.xaxis.set_major_formatter(mdates.DateFormatter("%b'%y"))
+    axins.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.2f}x"))
+    axins.tick_params(axis="both", labelsize=9)
+    for lbl in axins.get_xticklabels() + axins.get_yticklabels():
+        lbl.set_fontweight("bold")
+    axins.grid(axis="y", linestyle="--", alpha=0.35, zorder=1)
+    axins.grid(axis="x", linestyle=":",  alpha=0.20, zorder=1)
+    for spine in axins.spines.values():
+        spine.set_edgecolor("black")
+        spine.set_linewidth(1.2)
+
+    # ── Three legend boxes ────────────────────────────────────────────────────
+    _g = "#555555"
+    leg1_handles = [
+        mlines.Line2D([], [], color=_g, ls="-",  lw=1.2, label="Hold"),
+        mlines.Line2D([], [], color=_g, ls="-",  lw=1.2, label="Deep Learning"),
+        mlines.Line2D([], [], color=_g, ls="-.", lw=1.4, label="Single Agent"),
+        mlines.Line2D([], [], color=_g, ls="-",  lw=2.0, label="Hierarchical"),
+        mlines.Line2D([], [], color=_g, ls="--", lw=2.0, label="Collaborative"),
+        mlines.Line2D([], [], color=_g, ls=":",  lw=2.0, label="Debate"),
+    ]
+    leg2_handles = [
+        mpatches.Patch(color=_CAP_COLOR["zero_shot"],        label="Zero-Shot"),
+        mpatches.Patch(color=_CAP_COLOR["chain_of_thought"], label="Chain-of-Thought"),
+        mpatches.Patch(color=_CAP_COLOR["rag"],              label="RAG"),
+        mpatches.Patch(color=_CAP_COLOR["skill"],            label="Skill"),
+    ]
+    leg3_handles = [
+        mpatches.Patch(color=c, alpha=a, label=r.capitalize())
+        for r, (c, a) in _REGIME_COLOR.items()
+    ]
+
+    _leg_kw = dict(loc="upper left", frameon=False, fontsize=12,
+                   title_fontsize=12, borderpad=0, handlelength=1.8,
+                   columnspacing=1.0, handletextpad=0.5)
+
+    def _bold_legend(leg):
+        leg.get_title().set_fontweight("bold")
+        for text in leg.get_texts():
+            text.set_fontweight("bold")
+
+    leg1 = ax.legend(handles=leg1_handles, ncol=len(leg1_handles),
+                     bbox_to_anchor=(0.0, 1.00), title="Group / Architecture",
+                     **_leg_kw)
+    _bold_legend(leg1)
+    ax.add_artist(leg1)
+    leg2 = ax.legend(handles=leg2_handles, ncol=len(leg2_handles),
+                     bbox_to_anchor=(0.0, 0.88), title="Capability",
+                     **_leg_kw)
+    _bold_legend(leg2)
+    ax.add_artist(leg2)
+    leg3 = ax.legend(handles=leg3_handles, ncol=len(leg3_handles),
+                     bbox_to_anchor=(0.48, 0.88), title="Market Regime",
+                     **_leg_kw)
+    _bold_legend(leg3)
+
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(bottom=global_min_tv)
+    ax.set_xlabel("")
+    ax.set_ylabel("")
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.1f}x"))
+
+    # x-axis: month ticks in "Mon'YY" style (e.g. Jan'25)
+    ax.xaxis.set_major_locator(mdates.MonthLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b'%y"))
+    ax.tick_params(axis="x", labelsize=13, rotation=0)
+    ax.tick_params(axis="y", labelsize=13)
+    for lbl in ax.get_xticklabels() + ax.get_yticklabels():
+        lbl.set_fontweight("bold")
+
+    ax.grid(axis="y", linestyle="--", alpha=0.35, zorder=1)
+    ax.grid(axis="x", linestyle=":",  alpha=0.20, zorder=1)
     fig.tight_layout()
     return _save_or_show(fig, save_path, show)
 
