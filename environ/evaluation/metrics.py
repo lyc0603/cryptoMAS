@@ -48,14 +48,26 @@ def load_combination(combo_dir: Path) -> pd.DataFrame:
 
 
 def load_all(output_dir: Path) -> dict[str, pd.DataFrame]:
-    """Load all combinations from output_dir. Returns {combo_name: DataFrame}."""
+    """Load all combinations from output_dir, plus any shared benchmarks.
+
+    If a sibling ``benchmarks/`` directory exists at ``output_dir.parent /
+    "benchmarks"``, its contents are merged in automatically so that all
+    model-specific result directories share the same benchmark baselines
+    without duplicating data.
+    """
+    dirs = [output_dir]
+    shared_benchmarks = output_dir.parent / "benchmarks"
+    if shared_benchmarks.is_dir() and shared_benchmarks != output_dir:
+        dirs.append(shared_benchmarks)
+
     result = {}
-    for d in sorted(output_dir.iterdir()):
-        if not d.is_dir() or d.name.startswith("_"):
-            continue
-        df = load_combination(d)
-        if not df.empty:
-            result[d.name] = df
+    for root in dirs:
+        for d in sorted(root.iterdir()):
+            if not d.is_dir() or d.name.startswith("_"):
+                continue
+            df = load_combination(d)
+            if not df.empty:
+                result[d.name] = df
     return result
 
 

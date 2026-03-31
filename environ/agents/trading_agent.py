@@ -25,7 +25,7 @@ If total buy fractions exceed 1.0 they are scaled down proportionally.
 import json
 import logging
 
-from .base import BaseAgent
+from .base import BaseAgent, TRADING_OUTPUT_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,10 @@ UNIVERSE = ["BTC", "ETH", "BNB", "XRP", "SOL", "TRX", "ADA", "BCH",
 
 class TradingAgent(BaseAgent):
     """Converts agent signals into portfolio trading actions."""
+
+    @property
+    def output_schema(self) -> dict:
+        return TRADING_OUTPUT_SCHEMA
 
     @property
     def system_prompt(self) -> str:

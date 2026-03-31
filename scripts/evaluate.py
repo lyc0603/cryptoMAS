@@ -32,6 +32,7 @@ from environ.evaluation import (
     summary_table,
     plot_portfolio,
     plot_risk_return,
+    plot_model_comparison,
 )
 from environ.evaluation.metrics import load_combination, load_all, INITIAL_CASH
 
@@ -55,10 +56,21 @@ WEEKS_PER_YEAR = 52.0
 # ── Regime helpers (inlined from evaluate_regimes.py) ─────────────────────────
 
 def _build_basket(data_dir: Path) -> pd.Series | None:
-    """Load benchmark_mcap_hold total_value as the market basket. Returns None on failure."""
-    basket_dir = data_dir / "benchmark_mcap_hold"
-    df = load_combination(basket_dir)
-    return df["total_value"] if not df.empty else None
+    """Load benchmark_mcap_hold total_value as the market basket. Returns None on failure.
+
+    Checks data_dir first, then the shared sibling benchmarks/ directory (same
+    layout that load_all uses), so this works whether benchmarks live inside
+    data_dir or in the shared processed_data/benchmarks/ folder.
+    """
+    candidates = [
+        data_dir / "benchmark_mcap_hold",
+        data_dir.parent / "benchmarks" / "benchmark_mcap_hold",
+    ]
+    for basket_dir in candidates:
+        df = load_combination(basket_dir)
+        if not df.empty:
+            return df["total_value"]
+    return None
 
 
 def _classify_regimes(basket: pd.Series) -> pd.Series:
@@ -522,8 +534,8 @@ def latex_ablation_table(
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate MAS backtest results.")
-    parser.add_argument("--data-dir",   default="processed_data",
-                        help="Directory containing combination sub-folders (default: processed_data)")
+    parser.add_argument("--data-dir",   default="processed_data/gpt-4o",
+                        help="Directory containing combination sub-folders (default: processed_data/gpt-4o)")
     parser.add_argument("--output-dir", default=None,
                         help="Where to save figures (default: figures/)")
     parser.add_argument("--plot", nargs="+", choices=list(PLOTS),
@@ -634,6 +646,14 @@ def main():
         result   = fn(output_dir=data_dir, save_path=out_path, show=args.show)
         if result:
             print(f"Saved {plot_name:12s} → {result}")
+
+    # ── Model comparison bar charts (gpt-4o vs gpt-5) ────────────────────────
+    for cmp_path in plot_model_comparison(
+        base_dir=data_dir.parent,
+        save_path=output_dir / "model_comparison.pdf",
+        show=args.show,
+    ):
+        print(f"Saved {'model_comparison':12s} → {cmp_path}")
 
 
 if __name__ == "__main__":

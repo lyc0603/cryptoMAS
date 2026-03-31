@@ -52,7 +52,7 @@ Output schema (identical to TradingAgent):
 import json
 import logging
 
-from .base import BaseAgent
+from .base import BaseAgent, TRADING_OUTPUT_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +104,10 @@ _SKILL_DESCRIPTIONS = """\
 
 class SingleAgent(BaseAgent):
     """Single-agent baseline that processes raw market data and news in one call."""
+
+    @property
+    def output_schema(self) -> dict:
+        return TRADING_OUTPUT_SCHEMA
 
     @property
     def system_prompt(self) -> str:

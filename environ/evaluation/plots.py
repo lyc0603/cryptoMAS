@@ -13,7 +13,7 @@ import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 
-from .metrics import load_all, compute_metrics, summary_table, INITIAL_CASH
+from .metrics import load_all, compute_metrics, summary_table, INITIAL_CASH, WEEKS_PER_YEAR
 
 # ── Style constants ───────────────────────────────────────────────────────────
 
@@ -521,3 +521,242 @@ def plot_risk_return(
     return _save_or_show(fig, save_path, show)
 
 
+# ── Model comparison bar chart ────────────────────────────────────────────────
+
+_MAS_ARCHS = ("single_agent", "hierarchical", "collaborative", "debate")
+_MAS_CAPS  = ("zero_shot", "chain_of_thought", "rag", "skill")
+
+_ARCH_LABEL = {
+    "single_agent":  "SA",
+    "hierarchical":  "Hier",
+    "collaborative": "Collab",
+    "debate":        "Debate",
+}
+_CAP_LABEL = {
+    "zero_shot":        "ZS",
+    "chain_of_thought": "CoT",
+    "rag":              "RAG",
+    "skill":            "Skill",
+}
+
+# Pastel fill colors keyed by capability
+_CAP_COLORS = {
+    "zero_shot":        "#B3CDE3",   # pastel blue
+    "chain_of_thought": "#CCEBC5",   # pastel green
+    "rag":              "#FED9A6",   # pastel orange
+    "skill":            "#DECBE4",   # pastel purple
+}
+
+# Hatch patterns keyed by model (solid = first model, hatched = second)
+_MODEL_HATCHES = ["", "///"]
+_DIAGRAMS_DIR  = Path(__file__).parents[2] / "diagrams"
+
+
+def _svg_to_array(svg_path: Path, size: int = 64) -> np.ndarray | None:
+    """Rasterise an SVG to a float32 RGBA array, composited onto white."""
+    try:
+        import cairosvg
+        from io import BytesIO
+        import matplotlib.image as _mpimg
+        png = cairosvg.svg2png(url=str(svg_path), output_width=size, output_height=size)
+        arr = _mpimg.imread(BytesIO(png))          # float32 RGBA [0, 1]
+        if arr.shape[2] == 4:
+            alpha = arr[..., 3:4]
+            rgb   = arr[..., :3] * alpha + (1.0 - alpha)
+            arr   = np.concatenate([rgb, np.ones_like(alpha)], axis=2)
+        return arr
+    except Exception:
+        return None
+
+
+def _make_icon_handler(img: np.ndarray):
+    """Return a legend HandlerBase that draws *img* inside the handle box."""
+    from matplotlib.legend_handler import HandlerBase
+    from matplotlib.image import BboxImage
+    from matplotlib.transforms import Bbox, TransformedBbox
+
+    class _H(HandlerBase):
+        def create_artists(self, legend, orig_handle,
+                           xdescent, ydescent, width, height, fontsize, trans):
+            tbox  = TransformedBbox(
+                Bbox.from_bounds(xdescent, ydescent, width, height), trans
+            )
+            bimg  = BboxImage(tbox, zorder=3)
+            bimg.set_data(img)
+            return [bimg]
+
+    return _H()
+
+
+def _draw_comparison_panel(
+    ax,
+    all_combos: list[str],
+    combos_data: dict[str, dict[str, tuple[float, float]]],
+    models: list[str],
+    val_idx: int,
+    ylabel: str,
+) -> None:
+    """Draw one metric panel onto *ax*."""
+    from matplotlib.patches import Patch
+
+    x     = np.arange(len(all_combos))
+    bar_w = 0.35
+    n_m   = len(models)
+    offsets = np.linspace(-(n_m - 1) * bar_w / 2, (n_m - 1) * bar_w / 2, n_m)
+
+    for m_idx, model in enumerate(models):
+        hatch = _MODEL_HATCHES[m_idx] if m_idx < len(_MODEL_HATCHES) else ""
+        for c_idx, combo in enumerate(all_combos):
+            cap   = next((c for c in _MAS_CAPS if combo.endswith("_" + c)), "")
+            color = _CAP_COLORS.get(cap, "#cccccc")
+            val   = combos_data[model].get(combo, (np.nan, np.nan))[val_idx]
+            bar   = ax.bar(
+                x[c_idx] + offsets[m_idx], val,
+                width=bar_w, color=color, hatch=hatch,
+                edgecolor="#555555", linewidth=0.5,
+            )
+            if not np.isnan(val):
+                b      = bar[0]
+                va     = "bottom" if val >= 0 else "top"
+                off_y  = 0.5 if val >= 0 else -0.5
+                ax.text(
+                    b.get_x() + b.get_width() / 2,
+                    b.get_height() + off_y,
+                    f"{val:.1f}",
+                    ha="center", va=va, fontsize=5.5, color="#333333",
+                )
+
+    ax.axhline(0, color="black", linewidth=0.6, linestyle="--", alpha=0.4)
+    ax.set_ylabel(ylabel, fontsize=10)
+    ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f"))
+    ax.grid(axis="y", linestyle=":", linewidth=0.5, alpha=0.5)
+    ax.spines[["top", "right"]].set_visible(False)
+
+    # architecture separators
+    cap_count = len(_MAS_CAPS)
+    for i in range(len(_MAS_ARCHS) - 1):
+        ax.axvline((i + 1) * cap_count - 0.5,
+                   color="#aaaaaa", linewidth=0.8, linestyle="--", alpha=0.6)
+
+    # architecture group labels
+    for i, arch in enumerate(_MAS_ARCHS):
+        centre = i * cap_count + (cap_count - 1) / 2
+        ax.text(centre, 1.03, _ARCH_LABEL[arch],
+                transform=ax.get_xaxis_transform(),
+                ha="center", va="bottom",
+                fontsize=9, fontweight="bold", color="#444444")
+
+    # x-axis tick labels
+    resolved = []
+    for c in all_combos:
+        arch = next((a for a in _MAS_ARCHS if c.startswith(a + "_")), "")
+        cap  = c[len(arch) + 1:] if arch else c
+        resolved.append(f"{_ARCH_LABEL.get(arch, arch)}\n{_CAP_LABEL.get(cap, cap)}")
+    ax.set_xticks(x)
+    ax.set_xticklabels(resolved, fontsize=8)
+    ax.set_xlim(-0.6, len(all_combos) - 0.4)
+
+    # ── Legends: capability (colors) and model (hatches), both frameless on left ──
+    cap_handles = [
+        Patch(facecolor=_CAP_COLORS[cap], edgecolor="#555555")
+        for cap in _MAS_CAPS
+    ]
+    model_handles = [
+        Patch(facecolor="#dddddd",
+              hatch=_MODEL_HATCHES[m_idx] if m_idx < len(_MODEL_HATCHES) else "",
+              edgecolor="#555555")
+        for m_idx in range(len(models))
+    ]
+
+    leg1 = ax.legend(
+        cap_handles, [_CAP_LABEL[c] for c in _MAS_CAPS],
+        title="Capability", title_fontsize=8,
+        loc="upper left", fontsize=8,
+        frameon=False, handlelength=1.5, handleheight=1.2,
+    )
+    ax.add_artist(leg1)
+
+    # Position leg2 just to the right of leg1 using bbox_to_anchor
+    ax.legend(
+        model_handles, list(models),
+        title="Model", title_fontsize=8,
+        loc="upper left", bbox_to_anchor=(0.115, 1.0),
+        fontsize=8, frameon=False,
+        handlelength=1.5, handleheight=1.2,
+    )
+
+
+def plot_model_comparison(
+    base_dir: Path = Path("processed_data"),
+    models: tuple[str, ...] = ("gpt-4o", "gpt-5"),
+    save_path: Path | None = None,
+    show: bool = False,
+) -> list[Path]:
+    """Two bar-chart figures comparing cumulative return and annualised
+    volatility between *models* across every architecture × capability.
+
+    Colors encode capability; hatch encodes model.  SVG icons are placed
+    in the model legend when ``diagrams/<model>.svg`` exists.
+
+    Returns a list of the two saved Paths (empty on *show* mode).
+    """
+    # ── 1. Load metrics ───────────────────────────────────────────────────────
+    combos_data: dict[str, dict[str, tuple[float, float]]] = {}
+    for model in models:
+        model_dir = base_dir / model
+        if not model_dir.is_dir():
+            print(f"Warning: {model_dir} not found — skipping {model}")
+            continue
+        loaded = load_all(model_dir)
+        metrics: dict[str, tuple[float, float]] = {}
+        for arch in _MAS_ARCHS:
+            for cap in _MAS_CAPS:
+                name = f"{arch}_{cap}"
+                df   = loaded.get(name)
+                if df is None or df.empty:
+                    continue
+                wr = df["weekly_return"]
+                metrics[name] = (
+                    float((1 + wr).prod() - 1) * 100,
+                    float(wr.std() * np.sqrt(WEEKS_PER_YEAR)) * 100,
+                )
+        combos_data[model] = metrics
+
+    if not combos_data:
+        print("No model data found — skipping model comparison chart.")
+        return []
+
+    all_combos = [
+        f"{arch}_{cap}"
+        for arch in _MAS_ARCHS
+        for cap in _MAS_CAPS
+        if any(f"{arch}_{cap}" in combos_data.get(m, {}) for m in models)
+    ]
+    model_list = list(combos_data.keys())
+
+    metric_cfg = [
+        (0, "Cumulative Return (%)",     "cum_ret"),
+        (1, "Annualised Volatility (%)", "ann_vol"),
+    ]
+
+    figures_dir = (save_path.parent if save_path else
+                   base_dir.parent / "figures")
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    saved: list[Path] = []
+    for val_idx, ylabel, suffix in metric_cfg:
+        fig, ax = plt.subplots(figsize=(max(12, len(all_combos) * 0.9), 4.5))
+        fig.subplots_adjust(top=0.88)
+        _draw_comparison_panel(ax, all_combos, combos_data, model_list, val_idx, ylabel)
+
+        if show:
+            plt.show()
+            plt.close(fig)
+            continue
+
+        out = figures_dir / f"model_comparison_{suffix}.pdf"
+        fig.savefig(out, bbox_inches="tight")
+        plt.close(fig)
+        saved.append(out)
+
+    return saved

@@ -26,7 +26,7 @@ Usage:
 import argparse
 import json
 import logging
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
@@ -107,7 +107,8 @@ TRANSACTION_COST = 0.001  # 0.1% per trade (applied to both buys and sells)
 LOOKBACK_DAYS = 30  # days of market data fed to the Crypto Agent
 OUTPUT_DIR = Path("processed_data")
 NEWS_DIR = Path("data/news")
-OPENAI_MODEL = "gpt-4o"
+OPENAI_MODEL  = "gpt-4o"          # default / fallback model
+OPENAI_MODELS = ["gpt-4o", "gpt-5"]  # all models run when --model is not specified
 
 
 # ------------------------------------------------------------------
@@ -309,9 +310,11 @@ def run_combination(
     capability: str,
     weeks: list[str],
     dry_run: bool = False,
+    model: str | None = None,
+    output_dir: Path | None = None,
 ) -> None:
     combo_name = f"{arch_name}_{capability}"
-    out_dir = OUTPUT_DIR / combo_name
+    out_dir = (output_dir or OUTPUT_DIR) / combo_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info("=" * 60)
@@ -320,10 +323,11 @@ def run_combination(
     logger.info("=" * 60)
 
     # Instantiate MAS (shared across weeks for this combination)
+    _model = model or OPENAI_MODEL
     if not dry_run:
         mas = ARCHITECTURES[arch_name](
             capability=capability,
-            model=OPENAI_MODEL,
+            model=_model,
             temperature=0.0,
         )
 
@@ -478,6 +482,16 @@ def main():
         help="Restrict to a range of ISO weeks, e.g. --weeks 2025-W02 2025-W10",
     )
     parser.add_argument(
+        "--model",
+        default=None,
+        help=f"OpenAI model ID to run (default: all models in {OPENAI_MODELS}).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Override output directory (default: processed_data/<model>/).",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Skip LLM calls; write placeholder hold actions.",
@@ -493,15 +507,22 @@ def main():
             "Restricted to weeks %s – %s (%d weeks)", start_w, end_w, len(all_weeks)
         )
 
-    arch_list = [args.arch] if args.arch else list(ARCHITECTURES)
-    cap_list = [args.cap] if args.cap else CAPABILITIES
+    arch_list  = [args.arch] if args.arch else list(ARCHITECTURES)
+    cap_list   = [args.cap]  if args.cap  else CAPABILITIES
+    model_list = [args.model] if args.model else OPENAI_MODELS
 
-    total = len(arch_list) * len(cap_list)
-    logger.info("Running %d combination(s) × %d weeks", total, len(all_weeks))
+    total = len(model_list) * len(arch_list) * len(cap_list)
+    logger.info("Running %d model(s) × %d arch(s) × %d cap(s) × %d weeks",
+                len(model_list), len(arch_list), len(cap_list), len(all_weeks))
 
-    for arch_name in arch_list:
-        for capability in cap_list:
-            run_combination(arch_name, capability, all_weeks, dry_run=args.dry_run)
+    for model in model_list:
+        # Resolve output directory: explicit flag > processed_data/<model>/
+        out_dir = Path(args.output_dir) if args.output_dir else OUTPUT_DIR / model
+        logger.info("--- Model: %s  output: %s ---", model, out_dir)
+        for arch_name in arch_list:
+            for capability in cap_list:
+                run_combination(arch_name, capability, all_weeks,
+                                dry_run=args.dry_run, model=model, output_dir=out_dir)
 
     logger.info("All combinations complete.")
 

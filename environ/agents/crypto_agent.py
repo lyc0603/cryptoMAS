@@ -17,7 +17,7 @@ Output schema (list of dicts, one per asset):
 import json
 import logging
 
-from .base import BaseAgent
+from .base import BaseAgent, CRYPTO_OUTPUT_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,10 @@ _SKILL_DESCRIPTIONS = """\
 
 class CryptoAgent(BaseAgent):
     """Analyses raw market data and returns per-asset signals."""
+
+    @property
+    def output_schema(self) -> dict:
+        return CRYPTO_OUTPUT_SCHEMA
 
     @property
     def system_prompt(self) -> str:

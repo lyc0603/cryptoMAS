@@ -23,7 +23,7 @@ Output schema:
 import json
 import logging
 
-from .base import BaseAgent
+from .base import BaseAgent, NEWS_OUTPUT_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +67,10 @@ class NewsAgent(BaseAgent):
     """Analyses news articles and returns market sentiment signals."""
 
     @property
+    def output_schema(self) -> dict:
+        return NEWS_OUTPUT_SCHEMA
+
+    @property
     def system_prompt(self) -> str:
         return _SYSTEM
 
@@ -103,8 +107,52 @@ class NewsAgent(BaseAgent):
             "Analyse the news and return the JSON sentiment object."
         )
 
+    @staticmethod
+    def _sanitize_json_string(s: str) -> str:
+        """Escape literal control characters that appear inside JSON string values.
+
+        Claude (via Anthropic tool calling) occasionally emits a stringified
+        JSON array where ``rationale`` fields contain literal newlines (0x0A)
+        instead of the ``\\n`` escape sequence required by the JSON spec.
+        Walk the string char-by-char so we only replace control characters that
+        are *inside* a JSON string literal, leaving structural characters alone.
+        """
+        out = []
+        in_str = False
+        skip = False
+        _escape = {'\n': '\\n', '\r': '\\r', '\t': '\\t'}
+        for ch in s:
+            if skip:
+                out.append(ch)
+                skip = False
+            elif ch == '\\':
+                out.append(ch)
+                skip = True          # next char is escaped — pass through as-is
+            elif ch == '"':
+                out.append(ch)
+                in_str = not in_str
+            elif in_str and ch in _escape:
+                out.append(_escape[ch])
+            else:
+                out.append(ch)
+        return ''.join(out)
+
     def parse_response(self, content: str) -> dict:
         result = self._extract_json(content)
         assert isinstance(result, dict), f"Expected dict, got {type(result)}"
+        coin_signals = result.get("coin_signals", [])
+        # Claude (Anthropic tool calling) sometimes serialises the nested array
+        # as a string.  Decode it, sanitising literal control chars first.
+        if isinstance(coin_signals, str):
+            try:
+                coin_signals = json.loads(self._sanitize_json_string(coin_signals))
+            except json.JSONDecodeError:
+                import ast
+                coin_signals = ast.literal_eval(coin_signals)
+            result["coin_signals"] = coin_signals
+        if coin_signals and not isinstance(coin_signals[0], dict):
+            raise ValueError(
+                f"coin_signals items must be dicts, got {type(coin_signals[0])}: {coin_signals[:3]}"
+            )
         return result
 
