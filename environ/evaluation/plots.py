@@ -615,20 +615,11 @@ def _draw_comparison_panel(
                 width=bar_w, color=color, hatch=hatch,
                 edgecolor="#555555", linewidth=0.5,
             )
-            if not np.isnan(val):
-                b      = bar[0]
-                va     = "bottom" if val >= 0 else "top"
-                off_y  = 0.5 if val >= 0 else -0.5
-                ax.text(
-                    b.get_x() + b.get_width() / 2,
-                    b.get_height() + off_y,
-                    f"{val:.1f}",
-                    ha="center", va=va, fontsize=5.5, color="#333333",
-                )
 
     ax.axhline(0, color="black", linewidth=0.6, linestyle="--", alpha=0.4)
-    ax.set_ylabel(ylabel, fontsize=10)
+    ax.set_ylabel(ylabel, fontsize=13)
     ax.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f"))
+    ax.tick_params(axis="y", labelsize=12)
     ax.grid(axis="y", linestyle=":", linewidth=0.5, alpha=0.5)
     ax.spines[["top", "right"]].set_visible(False)
 
@@ -644,7 +635,7 @@ def _draw_comparison_panel(
         ax.text(centre, 1.03, _ARCH_LABEL[arch],
                 transform=ax.get_xaxis_transform(),
                 ha="center", va="bottom",
-                fontsize=9, fontweight="bold", color="#444444")
+                fontsize=13, fontweight="bold", color="#444444")
 
     # x-axis tick labels
     resolved = []
@@ -653,7 +644,7 @@ def _draw_comparison_panel(
         cap  = c[len(arch) + 1:] if arch else c
         resolved.append(f"{_ARCH_LABEL.get(arch, arch)}\n{_CAP_LABEL.get(cap, cap)}")
     ax.set_xticks(x)
-    ax.set_xticklabels(resolved, fontsize=8)
+    ax.set_xticklabels(resolved, fontsize=11)
     ax.set_xlim(-0.6, len(all_combos) - 0.4)
 
     # ── Legends: capability (colors) and model (hatches), both frameless on left ──
@@ -670,18 +661,17 @@ def _draw_comparison_panel(
 
     leg1 = ax.legend(
         cap_handles, [_CAP_LABEL[c] for c in _MAS_CAPS],
-        title="Capability", title_fontsize=8,
-        loc="upper left", fontsize=8,
+        title="Capability", title_fontsize=11,
+        loc="upper left", fontsize=11,
         frameon=False, handlelength=1.5, handleheight=1.2,
     )
     ax.add_artist(leg1)
 
-    # Position leg2 just to the right of leg1 using bbox_to_anchor
     ax.legend(
         model_handles, list(models),
-        title="Model", title_fontsize=8,
+        title="Model", title_fontsize=11,
         loc="upper left", bbox_to_anchor=(0.115, 1.0),
-        fontsize=8, frameon=False,
+        fontsize=11, frameon=False,
         handlelength=1.5, handleheight=1.2,
     )
 
@@ -745,7 +735,7 @@ def plot_model_comparison(
 
     saved: list[Path] = []
     for val_idx, ylabel, suffix in metric_cfg:
-        fig, ax = plt.subplots(figsize=(max(12, len(all_combos) * 0.9), 4.5))
+        fig, ax = plt.subplots(figsize=(max(12, len(all_combos) * 0.9), 3.5))
         fig.subplots_adjust(top=0.88)
         _draw_comparison_panel(ax, all_combos, combos_data, model_list, val_idx, ylabel)
 
