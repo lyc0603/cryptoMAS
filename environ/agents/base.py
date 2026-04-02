@@ -297,7 +297,25 @@ class BaseAgent(ABC):
             )
             tool_block = next(b for b in response.content if b.type == "tool_use")
             raw = tool_block.input
-            content = json.dumps(raw["items"] if wrapped else raw)
+            if wrapped:
+                if "items" in raw:
+                    content = json.dumps(raw["items"])
+                else:
+                    # Model omitted the wrapper key — try to recover a list.
+                    # 1) First list-valued entry (e.g. {"actions": [...]})
+                    list_vals = [v for v in raw.values() if isinstance(v, list)]
+                    if list_vals:
+                        content = json.dumps(list_vals[0])
+                    else:
+                        # 2) Dict of items keyed by symbol/index → convert values to list
+                        logger.warning(
+                            "Anthropic tool response missing 'items'; "
+                            "converting dict values to list. raw keys: %s",
+                            list(raw.keys()),
+                        )
+                        content = json.dumps(list(raw.values()))
+            else:
+                content = json.dumps(raw)
         elif self.model in _RESPONSES_API_MODELS:
             response = self.client.responses.create(
                 model=self.model,

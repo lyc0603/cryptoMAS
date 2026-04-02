@@ -647,9 +647,10 @@ def main():
         if result:
             print(f"Saved {plot_name:12s} → {result}")
 
-    # ── Model comparison bar charts (gpt-4o vs gpt-5) ────────────────────────
+    # ── Model comparison bar charts ───────────────────────────────────────────
     for cmp_path in plot_model_comparison(
         base_dir=data_dir.parent,
+        models=("gpt-4o", "gpt-5", "claude-sonnet-4-5"),
         save_path=output_dir / "model_comparison.pdf",
         show=args.show,
     ):

@@ -548,7 +548,7 @@ _CAP_COLORS = {
 }
 
 # Hatch patterns keyed by model (solid = first model, hatched = second)
-_MODEL_HATCHES = ["", "///"]
+_MODEL_HATCHES = ["", "///", "xxx"]
 _DIAGRAMS_DIR  = Path(__file__).parents[2] / "diagrams"
 
 
@@ -600,7 +600,7 @@ def _draw_comparison_panel(
     """Draw one metric panel onto *ax*."""
 
     x     = np.arange(len(all_combos))
-    bar_w = 0.35
+    bar_w = 0.25
     n_m   = len(models)
     offsets = np.linspace(-(n_m - 1) * bar_w / 2, (n_m - 1) * bar_w / 2, n_m)
 
@@ -682,7 +682,7 @@ def _draw_comparison_panel(
 
 def plot_model_comparison(
     base_dir: Path = Path("processed_data"),
-    models: tuple[str, ...] = ("gpt-4o", "gpt-5"),
+    models: tuple[str, ...] = ("gpt-4o", "gpt-5", "claude-sonnet-4-5"),
     save_path: Path | None = None,
     show: bool = False,
 ) -> list[Path]:
