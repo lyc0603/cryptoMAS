@@ -841,15 +841,6 @@
         <mxCell id="z8GJhRnVnX9FW4qEkKK8-347" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;flipV=1;legacyAnchorPoints=0;textDirection=vertical-lr;rotation=-180;fontSize=10;" value="&lt;div style=&quot;line-height: 100%;&quot;&gt;Wealth&lt;/div&gt;" vertex="1">
           <mxGeometry height="80" width="20" x="1018.5" y="463.86" as="geometry" />
         </mxCell>
-        <mxCell id="z8GJhRnVnX9FW4qEkKK8-350" edge="1" parent="1" source="z8GJhRnVnX9FW4qEkKK8-355" style="edgeStyle=elbowEdgeStyle;elbow=horizontal;endArrow=classicThin;html=1;curved=0;rounded=0;endSize=8;startSize=8;endFill=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" value="">
-          <mxGeometry height="50" relative="1" width="50" as="geometry">
-            <Array as="points">
-              <mxPoint x="1339" y="522.86" />
-            </Array>
-            <mxPoint x="1320" y="630" as="sourcePoint" />
-            <mxPoint x="1269" y="502.86" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
         <mxCell id="MAxFhJHlIGl-ot8Fx9IW-1" edge="1" parent="1" style="shape=flexArrow;endArrow=classic;html=1;rounded=0;fillColor=#7EA6E0;strokeColor=none;fillStyle=auto;gradientColor=none;gradientDirection=west;endWidth=8.965517241379311;endSize=4.468965517241379;" value="">
           <mxGeometry height="50" relative="1" width="50" as="geometry">
             <mxPoint x="949.3" y="584.5" as="sourcePoint" />
